@@ -268,6 +268,85 @@ public class ElmProtEcuDetectTest {
         assertEquals(42.0, ((Number) speed).doubleValue(), 0.01);
     }
 
+    /** ELM327 output of an ISO-TP response with headers off: single line, or length + indexed lines */
+    private static String[] isoTpLines(String payload) {
+        int len = payload.length() / 2;
+        if (len <= 7) {
+            return new String[]{payload};
+        }
+        List<String> lines = new ArrayList<>();
+        lines.add(String.format("%03X", len));
+        lines.add("0:" + payload.substring(0, 12));
+        int idx = 1;
+        for (int pos = 12; pos < payload.length(); pos += 14, idx++) {
+            String chunk = payload.substring(pos, Math.min(pos + 14, payload.length()));
+            // pad the last frame like a vehicle would
+            while (chunk.length() < 14) {
+                chunk += "55";
+            }
+            lines.add(String.format("%X:", idx % 16) + chunk);
+        }
+        return lines.toArray(new String[0]);
+    }
+
+    @Test
+    public void obdOnUdsFaultCodesAndVinAreDecodedAsClassicServices() throws Exception {
+        final String vin = "JTMAB3FV3RD123456";
+        StringBuilder vinHex = new StringBuilder();
+        for (char c : vin.toCharArray()) {
+            vinHex.append(String.format("%02X", (int) c));
+        }
+        ElmProt elm = new ElmProt();
+        // 29 bit functional OBD on UDS vehicle with stored DTCs P0301, P0420 and a VIN
+        SimAdapter adapter = new SimAdapter((request, protocol, header) -> {
+            if (!protocol.equals("7")) {
+                return null;
+            }
+            switch (request) {
+                case "22F400":
+                    return new String[]{header != null ? "18DAF1620762F40000080000" : "62F40000080000"};
+                case "19423308FF":
+                    // 59 42 33 DSAM DSevAM DFI + 2 records (severity, 3 byte DTC, status)
+                    return isoTpLines("594233FF1E04" + "2003010008" + "2004200008");
+                case "22F800":
+                    // info type 02 (VIN) supported
+                    return isoTpLines("62F80040000000");
+                case "22F802":
+                    return isoTpLines("62F802" + vinHex);
+                default:
+                    return new String[]{"7F" + request.substring(0, 2) + "31"};
+            }
+        });
+        elm.addTelegramWriter(adapter);
+
+        connect(elm);
+        pump(elm, adapter, 500);
+        assertTrue(elm.isObdOnUds());
+
+        // stored fault codes (service 03 -> 19 42 33 08 FF)
+        ObdProt.tCodes.clear();
+        elm.setService(ObdProt.OBD_SVC_READ_CODES);
+        pump(elm, adapter, 500, 1500);
+        elm.setService(ObdProt.OBD_SVC_NONE);
+        assertTrue("fault codes requested via ReadDTCInformation", adapter.sentAny("19423308FF"));
+        assertTrue("P0301 decoded " + ObdProt.tCodes.keySet(), ObdProt.tCodes.containsKey(0x0301));
+        assertTrue("P0420 decoded " + ObdProt.tCodes.keySet(), ObdProt.tCodes.containsKey(0x0420));
+
+        // VIN (service 09 info type 02 -> 22 F8 02)
+        elm.setService(ObdProt.OBD_SVC_VEH_INFO);
+        pump(elm, adapter, 500, 1500);
+        elm.setService(ObdProt.OBD_SVC_NONE);
+        assertTrue("VIN requested as DID F802", adapter.sentAny("22F802"));
+        boolean vinFound = false;
+        for (Object pv : ObdProt.VidPvs.values()) {
+            if (pv instanceof com.obddroid.ecu.EcuDataPv
+                    && String.valueOf(((com.obddroid.ecu.EcuDataPv) pv).get(com.obddroid.ecu.EcuDataPv.FID_VALUE)).contains(vin)) {
+                vinFound = true;
+            }
+        }
+        assertTrue("VIN decoded " + ObdProt.VidPvs.values(), vinFound);
+    }
+
     private static AtomicReference<Object> captureEcuAddresses(ElmProt elm) {
         AtomicReference<Object> ecus = new AtomicReference<>();
         elm.addPropertyChangeListener(evt -> {

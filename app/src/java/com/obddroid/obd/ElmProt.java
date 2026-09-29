@@ -131,9 +131,16 @@ public class ElmProt
 	 */
 	private volatile boolean obdOnUds = false;
 	/**
-	 * Last request sent was translated to OBD on UDS
+	 * Last request sent was a service 01 PID request translated to OBD on UDS
+	 * (responses are translated line by line)
 	 */
 	private boolean lastRequestTranslated = false;
+	/**
+	 * Classic request (e.g. "03", "0902") if the last request sent was a fault code,
+	 * clear code or vehicle information request translated to OBD on UDS
+	 * (responses are translated as complete messages), otherwise null
+	 */
+	private String lastMessageRequest = null;
 	/**
 	 * Scheduler for delayed ECU detection restarts
 	 */
@@ -623,10 +630,16 @@ public class ElmProt
 	@Override
 	public void sendTelegram(char[] buffer)
 	{
-		// OBD on UDS vehicle: request service 01 PIDs as DIDs F4xx
-		String udsRequest = obdOnUds ? ObdOnUds.toUdsRequest(String.valueOf(buffer)) : null;
+		// OBD on UDS vehicle: request service 01 PIDs as DIDs F4xx,
+		// fault codes via ReadDTCInformation and vehicle info as DIDs F8xx
+		String request = String.valueOf(buffer);
+		String udsRequest = obdOnUds ? ObdOnUds.toUdsRequest(request) : null;
 		lastRequestTranslated = (udsRequest != null);
+		String udsMessageRequest = obdOnUds && !lastRequestTranslated
+			? ObdOnUds.toUdsMessageRequest(request) : null;
+		lastMessageRequest = (udsMessageRequest != null) ? request.trim() : null;
 		if (lastRequestTranslated) { buffer = udsRequest.toCharArray(); }
+		else if (udsMessageRequest != null) { buffer = udsMessageRequest.toCharArray(); }
 
 		log.fine(this.toString() + " TX:'" + String.valueOf(buffer) + "'");
 		lastCommand = buffer;
@@ -1315,6 +1328,17 @@ public class ElmProt
 	private int handleDataMessage(String lastRxMsg)
 	{
 		int result = 0;
+		
+		// OBD on UDS fault code / vehicle info response -> classic service format
+		if (lastMessageRequest != null)
+		{
+			String classic = ObdOnUds.fromUdsMessage(lastRxMsg, lastMessageRequest);
+			if (classic != null)
+			{
+				log.fine(String.format("OBD on UDS response '%s' -> '%s'", lastRxMsg, classic));
+				lastRxMsg = classic;
+			}
+		}
 		
 		// otherwise process response
 		switch (service)

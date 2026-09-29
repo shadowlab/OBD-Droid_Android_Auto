@@ -73,4 +73,78 @@ public class ObdOnUdsTest {
         assertNull(ObdOnUds.fromUdsResponse("NODATA"));
         assertNull(ObdOnUds.fromUdsResponse("OK"));
     }
+
+    // --- fault codes, clear codes and vehicle information ---
+
+    /** "JTMAB3FV3RD123456" as hex */
+    private static final String VIN_HEX = "4A544D41423346563352443132333435 36".replace(" ", "");
+
+    @Test
+    public void translatesMessageRequests() {
+        assertEquals("19423308FF", ObdOnUds.toUdsMessageRequest("03"));
+        assertEquals("19423304FF", ObdOnUds.toUdsMessageRequest("07"));
+        assertEquals("195533", ObdOnUds.toUdsMessageRequest("0A"));
+        assertEquals("14FFFF33", ObdOnUds.toUdsMessageRequest("04"));
+        assertEquals("22F802", ObdOnUds.toUdsMessageRequest("0902"));
+        assertEquals("22F800", ObdOnUds.toUdsMessageRequest("0900"));
+        assertNull(ObdOnUds.toUdsMessageRequest("0100"));
+        assertNull(ObdOnUds.toUdsMessageRequest("ATZ"));
+        assertNull(ObdOnUds.toUdsMessageRequest("02"));
+    }
+
+    @Test
+    public void translatesStoredAndPendingDtcs() {
+        // 59 42 33 DSAM DSevAM DFI + {severity, DTC P0301 FTB 00, status}, {severity, DTC P0420 FTB 00, status}
+        String response = "594233FF1E04" + "2003010008" + "2004200008";
+        assertEquals("430203010420", ObdOnUds.fromUdsMessage(response, "03"));
+        assertEquals("470203010420", ObdOnUds.fromUdsMessage(response.replace("08", "04"), "07"));
+    }
+
+    @Test
+    public void translatesNoDtcs() {
+        assertEquals("4300", ObdOnUds.fromUdsMessage("594233FF1E04", "03"));
+    }
+
+    @Test
+    public void translatesPermanentDtcs() {
+        // 59 55 33 DSAM DFI + {DTC P0301 FTB 7B, status}
+        assertEquals("4A010301", ObdOnUds.fromUdsMessage("595533FF04" + "03017B08", "0A"));
+    }
+
+    @Test
+    public void translatesClearAndNegativeResponses() {
+        assertEquals("44", ObdOnUds.fromUdsMessage("54", "04"));
+        assertEquals("7F0331", ObdOnUds.fromUdsMessage("7F1931", "03"));
+        assertEquals("7F0931", ObdOnUds.fromUdsMessage("7F2231", "0902"));
+    }
+
+    @Test
+    public void translatesVin() {
+        // no message count in the UDS response: classic count 01 is added
+        assertEquals("490201" + VIN_HEX, ObdOnUds.fromUdsMessage("62F802" + VIN_HEX, "0902"));
+        // count already present: kept as is
+        assertEquals("490201" + VIN_HEX, ObdOnUds.fromUdsMessage("62F80201" + VIN_HEX, "0902"));
+        // supported info types bitmap
+        assertEquals("490055400000", ObdOnUds.fromUdsMessage("62F80055400000", "0900"));
+    }
+
+    @Test
+    public void leavesUnrelatedMessagesAlone() {
+        assertNull(ObdOnUds.fromUdsMessage("NODATA", "03"));
+        assertNull(ObdOnUds.fromUdsMessage("62F40D00", "03"));
+        assertNull(ObdOnUds.fromUdsMessage("5942", "03"));
+    }
+
+    @Test
+    public void assemblesRawMultiFrameDtcResponse() {
+        // 16 bytes: length line, 6 + 7 + 3 bytes (padding cut)
+        String raw = "010 0:594233FF1E04 1:20030100082004 2:20000855555555";
+        assertEquals("430203010420", ObdOnUds.rawResponseToClassic(raw, "03"));
+    }
+
+    @Test
+    public void rawResponseKeepsOtherLines() {
+        assertEquals("44", ObdOnUds.rawResponseToClassic("54", "04"));
+        assertEquals("NODATA", ObdOnUds.rawResponseToClassic("NODATA", "03"));
+    }
 }
