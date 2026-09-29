@@ -48,7 +48,7 @@ public class LiveDataScreen extends RefreshingScreen {
     @Override
     public Template onGetTemplate() {
         if (!ObdCarData.isAdapterConnected()) {
-            return message("Not connected. Connect to your adapter in the phone app.");
+            return message(ObdCarData.getNotConnectedText());
         }
 
         int service = CommService.elm.getService();

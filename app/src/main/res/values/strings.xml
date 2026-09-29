@@ -250,6 +250,8 @@
     <string name="CONNECTING">Connecting…</string>
     <string name="CONNECTED">Connected</string>
     <string name="NODATA">No data</string>
+    <string name="vehicle_not_responding">Vehicle not responding</string>
+    <string name="vehicle_not_responding_hint">The adapter is connected, but the vehicle didn\'t answer standard OBD-II requests. Make sure the vehicle is switched on (READY), then reconnect. Some electric vehicles don\'t support standard OBD-II.</string>
     <string name="STOPPED">Stopped</string>
     <string name="DISCONNECTED">Disconnected</string>
     <string name="BUSERROR">BUS error</string>

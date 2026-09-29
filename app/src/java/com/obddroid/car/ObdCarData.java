@@ -38,6 +38,22 @@ final class ObdCarData {
                 || status == ElmProt.STAT.ECU_SELECTED;
     }
 
+    /**
+     * Adapter connected, but no ECU answered any detection attempt.
+     */
+    static boolean isVehicleNotResponding() {
+        return CommService.elm.isVehicleNotResponding();
+    }
+
+    /**
+     * Text explaining why there is no vehicle connection.
+     */
+    static String getNotConnectedText() {
+        return isVehicleNotResponding()
+                ? "Vehicle not responding. Make sure it is switched on (READY), then reconnect in the phone app."
+                : "Not connected. Connect to your adapter in the phone app.";
+    }
+
     static String getVehicleName() {
         return VehicleManager.getInstance().getVehicleDisplayName();
     }

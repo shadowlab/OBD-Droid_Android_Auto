@@ -29,7 +29,7 @@ public class VehicleStatusScreen extends RefreshingScreen {
                 .setTitle("Adapter")
                 .addText(connected
                         ? ObdCarData.getAdapterStatus().toString()
-                        : "Not connected. Connect to your adapter in the phone app.")
+                        : ObdCarData.getNotConnectedText())
                 .build();
 
         Row vehicleRow = new Row.Builder()

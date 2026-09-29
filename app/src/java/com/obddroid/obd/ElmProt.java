@@ -13,6 +13,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.Vector;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -60,6 +64,38 @@ public class ElmProt
 	 * preferred ELM protocol to be selected
 	 */
 	static private PROT preferredProtocol = PROT.ELM_PROT_AUTO;
+
+	/**
+	 * ECU detection attempts before reporting that the vehicle is not responding.
+	 * Vehicles that don't support generic OBD-II (e.g. many EVs) answer the 0100
+	 * detection request with NO DATA on every attempt.
+	 */
+	private static final int ECU_DETECT_MAX_ATTEMPTS = 3;
+	/**
+	 * Delay between ECU detection attempts [ms]
+	 */
+	private static final long ECU_DETECT_RETRY_DELAY_MS = 2000;
+	/**
+	 * ECU detection attempts answered with NO DATA since the last initialization
+	 */
+	private int ecuDetectNoDataCount = 0;
+	/**
+	 * true once all ECU detection attempts got NO DATA
+	 */
+	private volatile boolean vehicleNotResponding = false;
+	/**
+	 * Scheduler for delayed ECU detection retries
+	 */
+	private final ScheduledExecutorService ecuDetectScheduler =
+		Executors.newSingleThreadScheduledExecutor(r -> {
+			Thread thread = new Thread(r, "ELM-EcuDetectRetry");
+			thread.setDaemon(true);
+			return thread;
+		});
+	/**
+	 * Pending ECU detection retry, if any
+	 */
+	private ScheduledFuture<?> ecuDetectRetry;
 	
 	/**
 	 * list of identified ECU addresses
@@ -576,6 +612,8 @@ public class ElmProt
 	{
 		// reset all learned protocol data
 		super.reset();
+		// drop any pending ECU detection retry
+		resetEcuDetectRetries();
 		// either RESET or INFO command needs to be enabled
 		if (CMD.RESET.isEnabled())
 		{ sendCommand(CMD.RESET, 0); }
@@ -603,11 +641,83 @@ public class ElmProt
 		// enable headers
 		sendCommand(CMD.SETHEADER, 1);
 	}
+
+	/**
+	 * Did every ECU detection attempt get NO DATA?
+	 * The adapter reaches the vehicle bus, but no ECU answers generic OBD-II requests.
+	 *
+	 * @return true if the vehicle is not responding to ECU detection
+	 */
+	public boolean isVehicleNotResponding()
+	{
+		return vehicleNotResponding;
+	}
+
+	/**
+	 * Handle NO DATA as answer to the ECU detection request (0100).
+	 * Retries detection after a short delay; once all attempts are used up,
+	 * flags the vehicle as not responding instead of waiting silently.
+	 */
+	private void handleEcuDetectNoData()
+	{
+		ecuDetectNoDataCount++;
+		if (ecuDetectNoDataCount >= ECU_DETECT_MAX_ATTEMPTS)
+		{
+			log.warning(String.format(
+				"No ECU answered detection request after %d attempts - vehicle not responding to OBD-II",
+				ecuDetectNoDataCount));
+			vehicleNotResponding = true;
+			return;
+		}
+
+		log.info(String.format("No ECU answered detection request (attempt %d of %d) - retrying in %d ms",
+			ecuDetectNoDataCount, ECU_DETECT_MAX_ATTEMPTS, ECU_DETECT_RETRY_DELAY_MS));
+		cancelEcuDetectRetry();
+		ecuDetectRetry = ecuDetectScheduler.schedule(() ->
+		{
+			// same lock as handleTelegram(), so the retry never interleaves with RX handling
+			synchronized (ElmProt.this)
+			{
+				// skip if the adapter was re-initialized or moved on in the meantime
+				if (status != STAT.NODATA || vehicleNotResponding) { return; }
+				try
+				{
+					queryEcus();
+				}
+				catch (RuntimeException e)
+				{
+					log.warning("ECU detection retry failed: " + e);
+				}
+			}
+		}, ECU_DETECT_RETRY_DELAY_MS, TimeUnit.MILLISECONDS);
+	}
+
+	/**
+	 * Cancel a pending ECU detection retry and reset the attempt counter
+	 */
+	private void resetEcuDetectRetries()
+	{
+		cancelEcuDetectRetry();
+		ecuDetectNoDataCount = 0;
+		vehicleNotResponding = false;
+	}
+
+	private void cancelEcuDetectRetry()
+	{
+		if (ecuDetectRetry != null)
+		{
+			ecuDetectRetry.cancel(false);
+			ecuDetectRetry = null;
+		}
+	}
 	
 	private void initialize()
 	{
 		// set status to INITIALIZING
 		setStatus(STAT.INITIALIZING);
+		
+		// new session: start ECU detection attempts from scratch
+		resetEcuDetectRetries();
 		
 		// push custom init commands
 		cmdQueue.addAll(customInitCommands);
@@ -759,6 +869,11 @@ public class ElmProt
 						break;
 
 					case NODATA:
+						// no ECU answered the detection request: retry instead of stalling
+						if (status == STAT.ECU_DETECT)
+						{
+							handleEcuDetectNoData();
+						}
 						setStatus(STAT.NODATA);
 						// re-queue next data item
 						if (service != OBD_SVC_NONE)
