@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdk 34
+    compileSdk = 34
     defaultConfig {
         applicationId 'com.obddroid'
         minSdkVersion 21
@@ -18,7 +18,7 @@ android {
 
         lintOptions {
             // Override lint error on targetSdkVersion
-            abortOnError false
+            abortOnError = false
         }
 
         compileOptions {
@@ -50,7 +50,7 @@ android {
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
     buildTypes {
@@ -68,9 +68,9 @@ android {
     productFlavors {
     }
     lint {
-        abortOnError false
+        abortOnError = false
     }
-    namespace 'com.obddroid'
+    namespace = 'com.obddroid'
 }
 
 dependencies {
