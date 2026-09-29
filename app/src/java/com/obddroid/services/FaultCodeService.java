@@ -6,6 +6,7 @@ import com.obddroid.ecu.EcuCodeItem;
 import com.obddroid.ecu.ObdCodeList;
 import com.obddroid.interfaces.RawTelegramListener;
 import com.obddroid.obd.ElmProt;
+import com.obddroid.obd.ObdOnUds;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -312,7 +313,14 @@ public class FaultCodeService implements RawTelegramListener {
                 responseLock.wait(remaining);
             }
             expectingResponse.set(false);
-            return responseBuffer.toString().trim();
+            String response = responseBuffer.toString().trim();
+            // OBD on UDS vehicle: raw lines answer the translated UDS request, convert to classic format
+            if (CommService.elm != null && CommService.elm.isObdOnUds()) {
+                String classic = ObdOnUds.rawResponseToClassic(response, command);
+                log.fine(() -> "OBD on UDS response [" + response + "] -> [" + classic + "]");
+                return classic;
+            }
+            return response;
         }
     }
 

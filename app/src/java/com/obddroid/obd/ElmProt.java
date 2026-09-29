@@ -13,6 +13,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.Vector;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -60,6 +64,96 @@ public class ElmProt
 	 * preferred ELM protocol to be selected
 	 */
 	static private PROT preferredProtocol = PROT.ELM_PROT_AUTO;
+
+	/**
+	 * ECU detection strategies, tried in order while no ECU answers.
+	 * Newer vehicles (e.g. 2026+ EVs) implement OBD on UDS (SAE J1979-2) and don't
+	 * answer the classic 0100 request, so detection falls back to 22F400 on
+	 * 11 bit and 29 bit CAN.
+	 */
+	enum EcuDetectStage
+	{
+		/** classic 0100 on the preferred protocol */
+		CLASSIC(false, -1, null),
+		/** OBD on UDS, ISO 15765-4 CAN 11 bit, functional request 7DF */
+		UDS_CAN11(true, 6, "7DF"),
+		/** OBD on UDS, ISO 15765-4 CAN 29 bit, functional request 18DB33F1 */
+		UDS_CAN29(true, 7, "DB33F1"),
+		/**
+		 * OBD on UDS, CAN 29 bit, physical request to ECU 0x5A from tester 0xE0.
+		 * Addressing used by Car Scanner's profile for Toyota bZ / Subaru Solterra /
+		 * Lexus RZ (2026+), for vehicles that don't answer functional requests.
+		 */
+		UDS_CAN29_TOYOTA_EV(true, 7, "DA5AE0");
+
+		/** request PIDs via OBD on UDS */
+		final boolean uds;
+		/** ELM protocol number (ATSP), -1 for the preferred protocol */
+		final int protocol;
+		/** TX header (ATSH), null to keep the current one */
+		final String txHeader;
+
+		EcuDetectStage(boolean uds, int protocol, String txHeader)
+		{
+			this.uds = uds;
+			this.protocol = protocol;
+			this.txHeader = txHeader;
+		}
+	}
+
+	/**
+	 * Full detection cycles (all stages) before reporting that the vehicle is not responding
+	 */
+	private static final int ECU_DETECT_MAX_CYCLES = 3;
+	/**
+	 * Delay before restarting detection after a cycle without any answer [ms]
+	 */
+	private static final long ECU_DETECT_RETRY_DELAY_MS = 2000;
+	/**
+	 * Current ECU detection stage
+	 */
+	private EcuDetectStage ecuDetectStage = EcuDetectStage.CLASSIC;
+	/**
+	 * Detection cycles without any answer since the last initialization
+	 */
+	private int ecuDetectCycleCount = 0;
+	/**
+	 * true while the adapter is re-initialized to restart ECU detection;
+	 * keeps the cycle count across that re-initialization
+	 */
+	private boolean ecuDetectRestart = false;
+	/**
+	 * true once all ECU detection cycles went unanswered
+	 */
+	private volatile boolean vehicleNotResponding = false;
+	/**
+	 * Vehicle answered via OBD on UDS: translate service 01 requests and responses
+	 */
+	private volatile boolean obdOnUds = false;
+	/**
+	 * Last request sent was a service 01 PID request translated to OBD on UDS
+	 * (responses are translated line by line)
+	 */
+	private boolean lastRequestTranslated = false;
+	/**
+	 * Classic request (e.g. "03", "0902") if the last request sent was a fault code,
+	 * clear code or vehicle information request translated to OBD on UDS
+	 * (responses are translated as complete messages), otherwise null
+	 */
+	private String lastMessageRequest = null;
+	/**
+	 * Scheduler for delayed ECU detection restarts
+	 */
+	private final ScheduledExecutorService ecuDetectScheduler =
+		Executors.newSingleThreadScheduledExecutor(r -> {
+			Thread thread = new Thread(r, "ELM-EcuDetectRetry");
+			thread.setDaemon(true);
+			return thread;
+		});
+	/**
+	 * Pending ECU detection restart, if any
+	 */
+	private ScheduledFuture<?> ecuDetectRetry;
 	
 	/**
 	 * list of identified ECU addresses
@@ -536,6 +630,17 @@ public class ElmProt
 	@Override
 	public void sendTelegram(char[] buffer)
 	{
+		// OBD on UDS vehicle: request service 01 PIDs as DIDs F4xx,
+		// fault codes via ReadDTCInformation and vehicle info as DIDs F8xx
+		String request = String.valueOf(buffer);
+		String udsRequest = obdOnUds ? ObdOnUds.toUdsRequest(request) : null;
+		lastRequestTranslated = (udsRequest != null);
+		String udsMessageRequest = obdOnUds && !lastRequestTranslated
+			? ObdOnUds.toUdsMessageRequest(request) : null;
+		lastMessageRequest = (udsMessageRequest != null) ? request.trim() : null;
+		if (lastRequestTranslated) { buffer = udsRequest.toCharArray(); }
+		else if (udsMessageRequest != null) { buffer = udsMessageRequest.toCharArray(); }
+
 		log.fine(this.toString() + " TX:'" + String.valueOf(buffer) + "'");
 		lastCommand = buffer;
 		super.sendTelegram(buffer);
@@ -576,6 +681,8 @@ public class ElmProt
 	{
 		// reset all learned protocol data
 		super.reset();
+		// drop any pending ECU detection retry, unless this reset restarts detection
+		if (!ecuDetectRestart) { resetEcuDetectRetries(); }
 		// either RESET or INFO command needs to be enabled
 		if (CMD.RESET.isEnabled())
 		{ sendCommand(CMD.RESET, 0); }
@@ -603,11 +710,189 @@ public class ElmProt
 		// enable headers
 		sendCommand(CMD.SETHEADER, 1);
 	}
+
+	/**
+	 * Did every ECU detection cycle go unanswered?
+	 * The adapter works, but no ECU answers generic OBD-II requests.
+	 *
+	 * @return true if the vehicle is not responding to ECU detection
+	 */
+	public boolean isVehicleNotResponding()
+	{
+		return vehicleNotResponding;
+	}
+
+	/**
+	 * Is the vehicle accessed via OBD on UDS (SAE J1979-2)?
+	 *
+	 * @return true if service 01 requests are sent as UDS DIDs F4xx
+	 */
+	public boolean isObdOnUds()
+	{
+		return obdOnUds;
+	}
+
+	/**
+	 * Protocol to restore after communication errors: the one the vehicle was
+	 * detected on for OBD on UDS stages, otherwise the preferred protocol.
+	 *
+	 * @return ELM protocol number
+	 */
+	private int getActiveProtocol()
+	{
+		return ecuDetectStage.protocol >= 0 ? ecuDetectStage.protocol : preferredProtocol.ordinal();
+	}
+
+	/**
+	 * Does this adapter response mean that no ECU answered the detection request?
+	 */
+	private static boolean isNoEcuAnswer(RSP_ID response)
+	{
+		switch (response)
+		{
+			case NODATA:
+			case NOCONN:
+			case NOCONN2:
+			case CANERROR:
+			case BUSINIERR:
+			case BUSINIERR2:
+			case BUSINIERR3:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	/**
+	 * No ECU answered the detection request of the current stage.
+	 * Tries the next detection stage; after a full cycle without answer,
+	 * re-initializes the adapter and starts over, and after
+	 * ECU_DETECT_MAX_CYCLES flags the vehicle as not responding.
+	 * Called on the adapter prompt, so the adapter is idle.
+	 */
+	private void handleEcuDetectNoAnswer()
+	{
+		// drop the queued "headers off" of the unanswered stage; each stage queues its own
+		cmdQueue.clear();
+
+		EcuDetectStage[] stages = EcuDetectStage.values();
+		int next = ecuDetectStage.ordinal() + 1;
+		if (next < stages.length)
+		{
+			ecuDetectStage = stages[next];
+			log.info("No ECU answered - trying detection stage " + ecuDetectStage);
+			startEcuDetectStage();
+			return;
+		}
+
+		// full cycle without answer
+		ecuDetectCycleCount++;
+		ecuDetectStage = EcuDetectStage.CLASSIC;
+		obdOnUds = false;
+		if (ecuDetectCycleCount >= ECU_DETECT_MAX_CYCLES)
+		{
+			log.warning(String.format(
+				"No ECU answered after %d detection cycles - vehicle not responding to OBD-II",
+				ecuDetectCycleCount));
+			// set before the status change, so status listeners see it
+			vehicleNotResponding = true;
+			setStatus(STAT.NODATA);
+			return;
+		}
+
+		log.info(String.format("No ECU answered (cycle %d of %d) - restarting detection in %d ms",
+			ecuDetectCycleCount, ECU_DETECT_MAX_CYCLES, ECU_DETECT_RETRY_DELAY_MS));
+		setStatus(STAT.NODATA);
+		cancelEcuDetectRetry();
+		ecuDetectRetry = ecuDetectScheduler.schedule(() ->
+		{
+			// same lock as handleTelegram(), so the restart never interleaves with RX handling
+			synchronized (ElmProt.this)
+			{
+				// skip if the adapter was re-initialized or moved on in the meantime
+				if (status != STAT.NODATA || vehicleNotResponding) { return; }
+				try
+				{
+					// re-initialize the adapter (restores protocol and header), keeping the cycle count
+					ecuDetectRestart = true;
+					reset();
+				}
+				catch (RuntimeException e)
+				{
+					ecuDetectRestart = false;
+					log.warning("ECU detection restart failed: " + e);
+				}
+			}
+		}, ECU_DETECT_RETRY_DELAY_MS, TimeUnit.MILLISECONDS);
+	}
+
+	/**
+	 * Send the detection request of the current (OBD on UDS) stage:
+	 * set header and protocol, then request PIDs 01-20 with headers enabled.
+	 */
+	private void startEcuDetectStage()
+	{
+		obdOnUds = ecuDetectStage.uds;
+		setStatus(STAT.ECU_DETECT);
+		ecuAddresses.clear();
+		selectedEcuAddress = 0;
+
+		// command queue is sent last-in first-out
+		// remember to disable headers again
+		pushCommand(CMD.SETHEADER, 0);
+		// request PIDs (translated to 22F400 for OBD on UDS)
+		cmdQueue.add("0100");
+		// enable headers
+		pushCommand(CMD.SETHEADER, 1);
+		// protocol after header, as Car Scanner does for these vehicles
+		pushCommand(CMD.SETPROT, ecuDetectStage.protocol);
+		// set TX header now
+		sendTelegram((CMD.CMD_HEADER + "SH" + ecuDetectStage.txHeader).toCharArray());
+	}
+
+	/**
+	 * Cancel a pending ECU detection restart and start detection from scratch
+	 */
+	private void resetEcuDetectRetries()
+	{
+		cancelEcuDetectRetry();
+		ecuDetectCycleCount = 0;
+		ecuDetectStage = EcuDetectStage.CLASSIC;
+		obdOnUds = false;
+		vehicleNotResponding = false;
+	}
+
+	private void cancelEcuDetectRetry()
+	{
+		if (ecuDetectRetry != null)
+		{
+			ecuDetectRetry.cancel(false);
+			ecuDetectRetry = null;
+		}
+	}
 	
 	private void initialize()
 	{
 		// set status to INITIALIZING
 		setStatus(STAT.INITIALIZING);
+		
+		// forget responses of the previous session, so the next prompt isn't
+		// handled as a reply to an old request (e.g. NO DATA before a restart)
+		lastRxMsg = "";
+		
+		// new session: start ECU detection from scratch,
+		// unless this initialization restarts an unanswered detection
+		if (ecuDetectRestart)
+		{
+			ecuDetectRestart = false;
+			cancelEcuDetectRetry();
+			ecuDetectStage = EcuDetectStage.CLASSIC;
+			obdOnUds = false;
+		}
+		else
+		{
+			resetEcuDetectRetries();
+		}
 		
 		// push custom init commands
 		cmdQueue.addAll(customInitCommands);
@@ -670,6 +955,17 @@ public class ElmProt
 		// log message reception as answer to last TX message
 		log.fine("ELM rx:'" + bufferStr + "' (" + lastTxMsg + ")");
 		
+		// OBD on UDS response (62F4xx...) -> service 01 format (41xx...)
+		if (lastRequestTranslated)
+		{
+			String obdResponse = ObdOnUds.fromUdsResponse(bufferStr);
+			if (obdResponse != null)
+			{
+				bufferStr = obdResponse;
+				buffer = obdResponse.toCharArray();
+			}
+		}
+		
 		// handle response
 		switch (getResponseId(bufferStr))
 		{
@@ -719,6 +1015,12 @@ public class ElmProt
 			
 			// received a PROMPT, what was the last response?
 			case PROMPT:
+				// no ECU answered the detection request: try the next detection stage
+				if (status == STAT.ECU_DETECT && isNoEcuAnswer(getResponseId(lastRxMsg)))
+				{
+					handleEcuDetectNoAnswer();
+					break;
+				}
 				// check for last received message
 				switch (getResponseId(lastRxMsg))
 				{
@@ -734,8 +1036,8 @@ public class ElmProt
 						setStatus(STAT.DISCONNECTED);
 						// re-queue last command
 						cmdQueue.add(String.valueOf(lastCommand));
-						// queue setting to preferred protocol
-						pushCommand(CMD.SETPROT, preferredProtocol.ordinal());
+						// queue setting to active protocol
+						pushCommand(CMD.SETPROT, getActiveProtocol());
 						// Initialize adaptive timing
 						mAdaptiveTiming.initialize();
 						// immediately close current protocol
@@ -770,8 +1072,8 @@ public class ElmProt
 						}
 						// increase OBD timeout since we may expect answers too fast
 						mAdaptiveTiming.adapt(true);
-						// set to preferred protocol
-						pushCommand(CMD.SETPROT, preferredProtocol.ordinal());
+						// set to active protocol
+						pushCommand(CMD.SETPROT, getActiveProtocol());
 						// NO break here since reaction is only quqeued
 					
 					case MODEL:
@@ -1026,6 +1328,17 @@ public class ElmProt
 	private int handleDataMessage(String lastRxMsg)
 	{
 		int result = 0;
+		
+		// OBD on UDS fault code / vehicle info response -> classic service format
+		if (lastMessageRequest != null)
+		{
+			String classic = ObdOnUds.fromUdsMessage(lastRxMsg, lastMessageRequest);
+			if (classic != null)
+			{
+				log.fine(String.format("OBD on UDS response '%s' -> '%s'", lastRxMsg, classic));
+				lastRxMsg = classic;
+			}
+		}
 		
 		// otherwise process response
 		switch (service)

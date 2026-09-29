@@ -607,6 +607,14 @@ public class MainActivity extends AppCompatActivity
                             }
                         }
 
+                        // No ECU answered any detection attempt: say so instead of waiting silently
+                        if (getMode() != MODE.DEMO && state == ElmProt.STAT.NODATA
+                                && CommService.elm.isVehicleNotResponding()) {
+                            setStatus(R.string.vehicle_not_responding);
+                            showConnectionLoadingOverlay(getString(R.string.vehicle_not_responding),
+                                    getString(R.string.vehicle_not_responding_hint));
+                        }
+
                         // Enable individual OBD services only when ECU is detected
                         updateServiceMenuItems(state == ElmProt.STAT.ECU_DETECTED ||
                                                state == ElmProt.STAT.CONNECTED);
