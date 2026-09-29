@@ -70,6 +70,10 @@ android {
     lint {
         abortOnError = false
     }
+    testOptions {
+        // android.util.Log etc. return defaults in JVM unit tests instead of throwing
+        unitTests.returnDefaultValues = true
+    }
     namespace = 'com.obddroid'
 }
 
