@@ -236,6 +236,23 @@ adb shell am start -n com.obddroid/.ui.activities.MainActivity
 
 > **Note:** The Vehicle History feature requires a **private AutoCheck backend** that you host yourself. This is not included in the open-source release. If you have access to AutoCheck data through your own dealership or subscription, you can stand up your own backend and configure the endpoint in `local.properties`. All other features (live data, fault codes, emissions, recalls via NHTSA, AI copilot) work without it.
 
+### Android Auto (Desktop Head Unit)
+
+Android Auto shows adapter status, live data, and the last-read fault codes from the connection made in the phone app (`com.obddroid.car`). Connect to the adapter on the phone first; the car screens don't open their own connection.
+
+1. In Android Studio's SDK Manager → **SDK Tools**, install **Android Auto Desktop Head Unit Emulator**.
+2. Use a phone emulator with a **Google Play** system image (or a real phone) that has the Android Auto app.
+3. In Android Auto settings, tap **Version** 10 times to enable developer mode. Then, from the overflow menu, enable **Unknown sources** and choose **Start head unit server**.
+4. Install the debug build and start the DHU:
+
+```bash
+./gradlew :app:installDebug
+adb forward tcp:5277 tcp:5277
+$ANDROID_HOME/extras/google/auto/desktop-head-unit
+```
+
+Without a physical adapter, run an ELM327 simulator on your computer (`pip install ELM327-emulator`, then `elm -n 35000`). In the app's adapter screen, choose **Wi-Fi** with IP `10.0.2.2` and port `35000`.
+
 ---
 
 ## 🧪 Developer Workflow

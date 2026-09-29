@@ -219,6 +219,22 @@
             android:name="com.obddroid.scan.ScanOrchestrator"
             android:exported="false"
             android:foregroundServiceType="dataSync"/>
+
+        <!-- Android Auto: template-based car screens (see com.obddroid.car) -->
+        <service
+            android:name="com.obddroid.car.ObdCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
     </application>
 
 </manifest>
