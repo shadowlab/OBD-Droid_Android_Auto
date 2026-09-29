@@ -17,6 +17,12 @@ import java.util.Locale;
  *   09 PP          ->  22 F8 PP        62 F8 PP ..          ->  49 PP ..
  *   negative responses: 7F SS NRC -> 7F <classic service> NRC
  *
+ * Freeze frames (service 02) are read as a DTC snapshot record, which holds
+ * all PIDs of the frame as DIDs F4xx (see ElmProt for the request sequence):
+ *   19 03                    -> 59 03 {DTC(3) record}      which DTC has a snapshot
+ *   19 04 DTC(3) record      -> 59 04 DTC(3) status record n {DID data}
+ *   02 PP [FF] is answered from the snapshot as 42 PP FF data
+ *
  * UDS DTCs are 3 bytes (2 byte DTC + failure type byte); the classic
  * 2 byte DTC is kept.
  *
@@ -39,6 +45,25 @@ public final class ObdOnUds
 	private static final String UDS_READ_DTC_PERMANENT = "195533";
 	/** ClearDiagnosticInformation, emissions-related group */
 	private static final String UDS_CLEAR_DTC = "14FFFF33";
+
+	/** ReadDTCInformation, reportDTCSnapshotIdentification */
+	public static final String UDS_SNAPSHOT_IDENTIFICATION = "1903";
+	/** ReadDTCInformation, reportDTCSnapshotRecordByDTCNumber (+ DTC + record) */
+	public static final String UDS_SNAPSHOT_RECORD = "1904";
+
+	/**
+	 * Data length [bytes] of SAE J1979 PIDs 00-5F, used to split snapshot records.
+	 * PIDs without an entry are split at the next DID F4xx.
+	 */
+	private static final int[] PID_LENGTHS = {
+		// 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
+		   4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1,  // 00
+		   2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2,  // 10
+		   4, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1,  // 20
+		   1, 2, 2, 1, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 2, 2,  // 30
+		   4, 4, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 4,  // 40
+		   4, 1, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 1,  // 50
+	};
 
 	/** header length in hex digits: none, 11 bit CAN, 29 bit CAN */
 	private static final int[] HEADER_LENGTHS = {0, 3, 8};
@@ -344,6 +369,222 @@ public final class ObdOnUds
 			return OBD_NEG_RSP + payload.substring(UDS_NEG_RSP.length());
 		}
 		return null;
+	}
+
+	// --- freeze frames ---
+
+	/**
+	 * Freeze frame snapshot: DTC that stored it and PID data by PID
+	 */
+	public static final class Snapshot
+	{
+		/** 3 byte DTC (6 hex digits) */
+		public final String dtc;
+		/** PID -> data (hex) */
+		public final java.util.Map<Integer, String> pids;
+
+		Snapshot(String dtc, java.util.Map<Integer, String> pids)
+		{
+			this.dtc = dtc;
+			this.pids = pids;
+		}
+	}
+
+	/**
+	 * Is this a classic freeze frame request ("02PP" or "02PPFF")?
+	 */
+	public static boolean isFreezeFrameRequest(String request)
+	{
+		if (request == null)
+		{
+			return false;
+		}
+		String req = request.trim();
+		return (req.length() == 4 || req.length() == 6) && req.startsWith("02") && isHex(req);
+	}
+
+	/**
+	 * UDS request for a DTC snapshot record.
+	 *
+	 * @param dtc    3 byte DTC (6 hex digits)
+	 * @param record snapshot record number (2 hex digits)
+	 */
+	public static String snapshotRequest(String dtc, String record)
+	{
+		return UDS_SNAPSHOT_RECORD + dtc + record;
+	}
+
+	/**
+	 * Parse a snapshot identification response (59 03 {DTC(3) record}).
+	 *
+	 * @return {DTC, record} of the first snapshot, preferring record 00, or null if none
+	 */
+	public static String[] parseSnapshotIdentification(String message)
+	{
+		if (message == null || !message.startsWith("5903") || !isHex(message))
+		{
+			return null;
+		}
+		String[] first = null;
+		for (int i = 4; i + 8 <= message.length(); i += 8)
+		{
+			String[] entry = {message.substring(i, i + 6), message.substring(i + 6, i + 8)};
+			if (entry[1].equals("00"))
+			{
+				return entry;
+			}
+			if (first == null)
+			{
+				first = entry;
+			}
+		}
+		return first;
+	}
+
+	/**
+	 * Parse a snapshot record response (59 04 DTC(3) status record n {DID data}).
+	 * Only the first record is used. DIDs other than F4xx are skipped.
+	 *
+	 * @return snapshot, with no PIDs if the DTC has no stored record; null if not a snapshot response
+	 */
+	public static Snapshot parseSnapshot(String message)
+	{
+		if (message == null || !message.startsWith("5904") || message.length() < 12 || !isHex(message))
+		{
+			return null;
+		}
+		String dtc = message.substring(4, 10);
+		java.util.Map<Integer, String> pids = new java.util.LinkedHashMap<>();
+		// DTC status at 10, record number at 12, number of identifiers at 14
+		if (message.length() >= 16)
+		{
+			int numIds = Integer.parseInt(message.substring(14, 16), 16);
+			java.util.List<int[]> dids = new java.util.ArrayList<>();
+			if (splitDids(message, 16, numIds, dids))
+			{
+				for (int[] did : dids)
+				{
+					String id = message.substring(did[0], did[0] + 4);
+					if (id.startsWith("F4"))
+					{
+						pids.put(Integer.parseInt(id.substring(2), 16), message.substring(did[0] + 4, did[1]));
+					}
+				}
+			}
+		}
+		return new Snapshot(dtc, pids);
+	}
+
+	/**
+	 * Split a list of {DID(2) data} into exactly numIds entries ending at the end of the message.
+	 * Known PID lengths are used as given; other lengths end where the next DID F4xx starts.
+	 *
+	 * @param dids receives {start, end} of each entry (hex digit offsets)
+	 * @return true if a complete split was found
+	 */
+	private static boolean splitDids(String msg, int pos, int numIds, java.util.List<int[]> dids)
+	{
+		if (numIds == 0)
+		{
+			return pos == msg.length();
+		}
+		if (pos + 4 > msg.length())
+		{
+			return false;
+		}
+		String id = msg.substring(pos, pos + 4);
+		int dataStart = pos + 4;
+		int known = knownPidLength(id);
+		if (known > 0)
+		{
+			int end = dataStart + known * 2;
+			if (end <= msg.length())
+			{
+				dids.add(new int[]{pos, end});
+				if (splitDids(msg, end, numIds - 1, dids))
+				{
+					return true;
+				}
+				dids.remove(dids.size() - 1);
+			}
+			return false;
+		}
+		// unknown length: try every end where the next DID starts (or the message ends)
+		for (int end = dataStart + 2; end <= msg.length(); end += 2)
+		{
+			boolean boundary = (end == msg.length())
+				|| (numIds > 1 && msg.startsWith("F4", end));
+			if (!boundary)
+			{
+				continue;
+			}
+			dids.add(new int[]{pos, end});
+			if (splitDids(msg, end, numIds - 1, dids))
+			{
+				return true;
+			}
+			dids.remove(dids.size() - 1);
+		}
+		return false;
+	}
+
+	private static int knownPidLength(String did)
+	{
+		if (!did.startsWith("F4"))
+		{
+			return 0;
+		}
+		int pid = Integer.parseInt(did.substring(2), 16);
+		return pid < PID_LENGTHS.length ? PID_LENGTHS[pid] : 0;
+	}
+
+	/**
+	 * Answer a classic freeze frame request from a snapshot.
+	 *
+	 * @param snapshot       parsed snapshot
+	 * @param classicRequest "02PP" or "02PPFF"
+	 * @return classic response "42 PP FF data", or null if the PID isn't in the snapshot
+	 */
+	public static String freezeFrameResponse(Snapshot snapshot, String classicRequest)
+	{
+		if (snapshot == null || !isFreezeFrameRequest(classicRequest) || snapshot.pids.isEmpty())
+		{
+			return null;
+		}
+		String req = classicRequest.trim().toUpperCase(Locale.ROOT);
+		int pid = Integer.parseInt(req.substring(2, 4), 16);
+		String frame = req.length() == 6 ? req.substring(4, 6) : "00";
+		String prefix = String.format("42%02X%s", pid, frame);
+
+		// supported PIDs bitmap: PIDs in the snapshot, PID 02 (DTC of the frame)
+		// and the next bitmap PID if higher PIDs follow
+		if (pid % 0x20 == 0)
+		{
+			long bitmap = 0;
+			for (int p = pid + 1; p <= pid + 0x20; p++)
+			{
+				boolean supported = snapshot.pids.containsKey(p) || p == 0x02;
+				if (p == pid + 0x20)
+				{
+					for (int other : snapshot.pids.keySet())
+					{
+						supported |= other > pid + 0x20;
+					}
+				}
+				if (supported)
+				{
+					bitmap |= 1L << (pid + 0x20 - p);
+				}
+			}
+			return prefix + String.format("%08X", bitmap);
+		}
+		// DTC that stored the freeze frame
+		if (pid == 0x02)
+		{
+			return prefix + snapshot.dtc.substring(0, 4);
+		}
+		String data = snapshot.pids.get(pid);
+		return data != null ? prefix + data : null;
 	}
 
 	private static boolean isHex(String s)

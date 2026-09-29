@@ -142,6 +142,17 @@ public class ElmProt
 	 */
 	private String lastMessageRequest = null;
 	/**
+	 * OBD on UDS freeze frames: DTC (6 hex digits) and record number of the
+	 * snapshot identified by 19 03, null until identified
+	 */
+	private String ffSnapshotDtc = null;
+	private String ffSnapshotRecord = null;
+	/**
+	 * Classic freeze frame request answered by a queued 19 04 snapshot request
+	 * (chained after 19 03), null if none pending
+	 */
+	private String ffChainedRequest = null;
+	/**
 	 * Scheduler for delayed ECU detection restarts
 	 */
 	private final ScheduledExecutorService ecuDetectScheduler =
@@ -630,9 +641,33 @@ public class ElmProt
 	@Override
 	public void sendTelegram(char[] buffer)
 	{
+		String request = String.valueOf(buffer);
+
+		// OBD on UDS freeze frame: identify the snapshot (19 03) when starting a frame
+		// or not identified yet, otherwise read the snapshot record (19 04)
+		if (obdOnUds && ObdOnUds.isFreezeFrameRequest(request))
+		{
+			boolean supportedPids = request.trim().substring(2, 4).equals("00");
+			String udsRequest = (ffSnapshotDtc == null || supportedPids)
+				? ObdOnUds.UDS_SNAPSHOT_IDENTIFICATION
+				: ObdOnUds.snapshotRequest(ffSnapshotDtc, ffSnapshotRecord);
+			lastRequestTranslated = false;
+			lastMessageRequest = request.trim();
+			sendRawTelegram(udsRequest.toCharArray());
+			return;
+		}
+		// snapshot record request chained after 19 03 answers the pending freeze frame request
+		if (ffChainedRequest != null && request.startsWith(ObdOnUds.UDS_SNAPSHOT_RECORD))
+		{
+			lastRequestTranslated = false;
+			lastMessageRequest = ffChainedRequest;
+			ffChainedRequest = null;
+			sendRawTelegram(buffer);
+			return;
+		}
+
 		// OBD on UDS vehicle: request service 01 PIDs as DIDs F4xx,
 		// fault codes via ReadDTCInformation and vehicle info as DIDs F8xx
-		String request = String.valueOf(buffer);
 		String udsRequest = obdOnUds ? ObdOnUds.toUdsRequest(request) : null;
 		lastRequestTranslated = (udsRequest != null);
 		String udsMessageRequest = obdOnUds && !lastRequestTranslated
@@ -640,7 +675,17 @@ public class ElmProt
 		lastMessageRequest = (udsMessageRequest != null) ? request.trim() : null;
 		if (lastRequestTranslated) { buffer = udsRequest.toCharArray(); }
 		else if (udsMessageRequest != null) { buffer = udsMessageRequest.toCharArray(); }
+		// cleared codes drop their freeze frames
+		if ("04".equals(lastMessageRequest)) { ffSnapshotDtc = null; }
 
+		sendRawTelegram(buffer);
+	}
+
+	/**
+	 * Send a telegram to the adapter without OBD on UDS translation
+	 */
+	private void sendRawTelegram(char[] buffer)
+	{
 		log.fine(this.toString() + " TX:'" + String.valueOf(buffer) + "'");
 		lastCommand = buffer;
 		super.sendTelegram(buffer);
@@ -879,6 +924,8 @@ public class ElmProt
 		// forget responses of the previous session, so the next prompt isn't
 		// handled as a reply to an old request (e.g. NO DATA before a restart)
 		lastRxMsg = "";
+		ffSnapshotDtc = null;
+		ffChainedRequest = null;
 		
 		// new session: start ECU detection from scratch,
 		// unless this initialization restarts an unanswered detection
@@ -1320,6 +1367,45 @@ public class ElmProt
 	}
 	
 	/**
+	 * Translate a response to an OBD on UDS freeze frame request.
+	 * A snapshot identification (59 03) selects the snapshot and queues its
+	 * record request (19 04), which then answers the pending classic request.
+	 *
+	 * @param message complete response message
+	 * @return classic service 02 response, or null if there is nothing to deliver
+	 */
+	private String translateFreezeFrameResponse(String message)
+	{
+		if (message.startsWith("5903"))
+		{
+			String[] snapshot = ObdOnUds.parseSnapshotIdentification(message);
+			if (snapshot == null)
+			{
+				log.info("OBD on UDS: no freeze frame stored");
+				ffSnapshotDtc = null;
+				return null;
+			}
+			ffSnapshotDtc = snapshot[0];
+			ffSnapshotRecord = snapshot[1];
+			ffChainedRequest = lastMessageRequest;
+			// sent on the next prompt, before the next freeze frame request
+			cmdQueue.add(ObdOnUds.snapshotRequest(ffSnapshotDtc, ffSnapshotRecord));
+			return null;
+		}
+		if (message.startsWith("5904"))
+		{
+			String classic = ObdOnUds.freezeFrameResponse(ObdOnUds.parseSnapshot(message), lastMessageRequest);
+			log.fine(String.format("OBD on UDS snapshot '%s' -> '%s'", message, classic));
+			return classic;
+		}
+		if (message.startsWith("7F") && message.length() >= 6)
+		{
+			return "7F02" + message.substring(4);
+		}
+		return null;
+	}
+
+	/**
 	 * forward data message for further handling
 	 *
 	 * @param lastRxMsg received message to be forwarded
@@ -1329,8 +1415,19 @@ public class ElmProt
 	{
 		int result = 0;
 		
+		// OBD on UDS freeze frame response -> classic service 02 format
+		if (lastMessageRequest != null && ObdOnUds.isFreezeFrameRequest(lastMessageRequest))
+		{
+			String classic = translateFreezeFrameResponse(lastRxMsg);
+			if (classic == null)
+			{
+				// nothing to deliver (snapshot identified, request chained, or PID not in snapshot)
+				return result;
+			}
+			lastRxMsg = classic;
+		}
 		// OBD on UDS fault code / vehicle info response -> classic service format
-		if (lastMessageRequest != null)
+		else if (lastMessageRequest != null)
 		{
 			String classic = ObdOnUds.fromUdsMessage(lastRxMsg, lastMessageRequest);
 			if (classic != null)

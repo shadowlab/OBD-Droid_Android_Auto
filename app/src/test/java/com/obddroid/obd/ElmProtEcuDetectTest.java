@@ -347,6 +347,49 @@ public class ElmProtEcuDetectTest {
         assertTrue("VIN decoded " + ObdProt.VidPvs.values(), vinFound);
     }
 
+    @Test
+    public void obdOnUdsFreezeFrameIsDecodedAsService02() throws Exception {
+        ElmProt elm = new ElmProt();
+        // 29 bit functional OBD on UDS vehicle with a freeze frame for P0301 (speed 0x38 = 56 km/h)
+        SimAdapter adapter = new SimAdapter((request, protocol, header) -> {
+            if (!protocol.equals("7")) {
+                return null;
+            }
+            switch (request) {
+                case "22F400":
+                    return new String[]{header != null ? "18DAF1620762F40000080000" : "62F40000080000"};
+                case "1903":
+                    return isoTpLines("5903" + "03010000");
+                case "190403010000":
+                    return isoTpLines("5904" + "030100" + "08" + "00" + "04"
+                            + "F40464" + "F405B4" + "F40C1AF8" + "F40D38");
+                default:
+                    return new String[]{"7F" + request.substring(0, 2) + "31"};
+            }
+        });
+        elm.addTelegramWriter(adapter);
+
+        connect(elm);
+        pump(elm, adapter, 500);
+        assertTrue(elm.isObdOnUds());
+
+        elm.setService(ObdProt.OBD_SVC_FREEZEFRAME);
+        pump(elm, adapter, 500, 1500);
+        elm.setService(ObdProt.OBD_SVC_NONE);
+
+        assertTrue("snapshot identified", adapter.sentAny("1903"));
+        assertTrue("snapshot record read", adapter.sentAny("190403010000"));
+        Object speed = null;
+        for (Object pv : ObdProt.PidPvs.values()) {
+            if (pv instanceof com.obddroid.ecu.EcuDataPv
+                    && Integer.valueOf(0x0D).equals(((com.obddroid.ecu.EcuDataPv) pv).get(com.obddroid.ecu.EcuDataPv.FID_PID))) {
+                speed = ((com.obddroid.ecu.EcuDataPv) pv).get(com.obddroid.ecu.EcuDataPv.FID_VALUE);
+            }
+        }
+        assertNotNull("freeze frame speed decoded " + ObdProt.PidPvs.values(), speed);
+        assertEquals(56.0, ((Number) speed).doubleValue(), 0.01);
+    }
+
     private static AtomicReference<Object> captureEcuAddresses(ElmProt elm) {
         AtomicReference<Object> ecus = new AtomicReference<>();
         elm.addPropertyChangeListener(evt -> {
