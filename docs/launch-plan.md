@@ -1,7 +1,7 @@
 # 🚀 OBD-Droid Android Play Store Launch Plan
 
 ## Current Status: 75% Ready
-**Strengths:** Core features work, professional UI, unique features (Safety Recalls, Vehicle History)
+**Strengths:** Core features work, professional UI, unique features (Safety Recalls)
 **Needs:** Polish, compliance, marketing materials, monetization setup
 
 ---
@@ -36,7 +36,7 @@
 ### Required Documents
 - [ ] **Privacy Policy** (required)
   - Data collection disclosure
-  - Third-party services (NHTSA, AutoCheck)
+  - Third-party services (NHTSA)
   - User data handling
   - GDPR/CCPA compliance
 - [ ] **Terms of Service**
@@ -46,12 +46,11 @@
 ### Permissions Justification
 - [ ] Document why each permission is needed:
   - Bluetooth (OBD adapter connection)
-  - Internet (Safety Recalls, Vehicle History)
+  - Internet (Safety Recalls)
   - Storage (Export reports)
 
 ### API Compliance
 - [ ] Review NHTSA API terms
-- [ ] Review AutoCheck API agreement
 - [ ] Ensure proper attribution
 
 ---
@@ -78,7 +77,7 @@ Pro Version ($9.99):
 Free Trial: 7 days full access
 Monthly: $2.99
 Annual: $19.99 (save 44%)
-Features: Safety Recalls, Vehicle History, Cloud Backup
+Features: Safety Recalls, Cloud Backup
 ```
 
 ### Implementation
@@ -245,10 +244,9 @@ Features: Safety Recalls, Vehicle History, Cloud Backup
 
 ### Unique Features
 1. **Safety Recalls Integration** (NHTSA API)
-2. **Vehicle History Reports** (AutoCheck)
-3. **Three DTC Types** (Stored, Pending, Permanent)
-4. **Professional UI/UX** (Material Design)
-5. **Comprehensive Feature Set**
+2. **Three DTC Types** (Stored, Pending, Permanent)
+3. **Professional UI/UX** (Material Design)
+4. **Comprehensive Feature Set**
 
 ### Market Positioning
 - **Premium Quality**: Better UI than most competitors
@@ -266,13 +264,12 @@ Features: Safety Recalls, Vehicle History, Cloud Backup
 3. "OBD-Droid: Engine Scanner"
 
 ### Short Description
-"Professional OBD2 scanner with safety recalls & vehicle history reports"
+"Professional OBD2 scanner with safety recalls & live engine data"
 
 ### Key Features (Bullets)
 • Read & clear fault codes (stored, pending, permanent)
 • Real-time engine data & gauges
 • NHTSA safety recall lookup
-• Vehicle history reports
 • Fuel economy tracking
 • Emissions readiness testing
 • ECU module scanning

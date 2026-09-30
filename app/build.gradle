@@ -12,10 +12,6 @@ android {
 
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
-        // AutoCheck API – override in local.properties (gitignored)
-        buildConfigField "String", "AUTOCHECK_API_BASE_URL", "\"${project.findProperty('AUTOCHECK_API_BASE_URL') ?: ''}\""
-        buildConfigField "String", "AUTOCHECK_API_KEY", "\"${project.findProperty('AUTOCHECK_API_KEY') ?: ''}\""
-
         lintOptions {
             // Override lint error on targetSdkVersion
             abortOnError = false
@@ -93,7 +89,7 @@ dependencies {
 
     testImplementation 'junit:junit:4.13.2'
 
-    // Gson for JSON serialization (used by AutoCheck and other features)
+    // Gson for JSON serialization
     implementation 'com.google.code.gson:gson:2.10.1'
 
     // Automotive Logo Library

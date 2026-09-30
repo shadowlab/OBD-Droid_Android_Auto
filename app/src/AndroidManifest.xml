@@ -127,11 +127,6 @@
             android:configChanges="touchscreen|orientation|screenSize"
             android:exported="false" />
         <activity
-            android:name="com.obddroid.features.vehiclehistory.ui.AutoCheckActivity"
-            android:label="Vehicle History"
-            android:configChanges="touchscreen|orientation|screenSize"
-            android:exported="false" />
-        <activity
             android:name="com.obddroid.features.recalls.ui.RecallActivity"
             android:label="@string/safety_recalls"
             android:theme="@style/AppTheme.MaterialComponents"
