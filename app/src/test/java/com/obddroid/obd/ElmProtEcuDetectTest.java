@@ -174,6 +174,22 @@ public class ElmProtEcuDetectTest {
     }
 
     @Test
+    public void newSessionIgnoresRequestsQueuedByPreviousSession() throws Exception {
+        ElmProt elm = new ElmProt();
+        SimAdapter adapter = new SimAdapter((request, protocol, header) ->
+                request.equals("0100") ? new String[]{"7E8064100BE3EB811"} : null);
+        elm.addTelegramWriter(adapter);
+        // live data request left in the (shared) queue when the previous session ended
+        ObdProt.cmdQueue.add("010D");
+
+        connect(elm);
+        pump(elm, adapter, 500);
+
+        assertFalse("stale request not sent", adapter.sentAny("010D"));
+        assertEquals(ElmProt.STAT.ECU_DETECTED, elm.getStatus());
+    }
+
+    @Test
     public void functionalObdOnUdsVehicleIsDetectedOnCan29() throws Exception {
         ElmProt elm = new ElmProt();
         // answers 22F400 only as a 29 bit functional request (18DB33F1)

@@ -921,8 +921,10 @@ public class ElmProt
 		// set status to INITIALIZING
 		setStatus(STAT.INITIALIZING);
 		
-		// forget responses of the previous session, so the next prompt isn't
+		// forget requests and responses of the previous session: queued requests
+		// would be sent before ECU detection, and the next prompt must not be
 		// handled as a reply to an old request (e.g. NO DATA before a restart)
+		cmdQueue.clear();
 		lastRxMsg = "";
 		ffSnapshotDtc = null;
 		ffChainedRequest = null;
