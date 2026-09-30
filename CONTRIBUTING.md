@@ -12,12 +12,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Development Setup
 
 - **Device**: Physical Android device with Bluetooth recommended for OBD testing.
-- **AutoCheck API** (optional): The Vehicle History feature requires a private AutoCheck backend that you host yourself. If you have one, set your endpoint and key in `local.properties`:
-  ```properties
-  AUTOCHECK_API_BASE_URL=https://your-private-endpoint
-  AUTOCHECK_API_KEY=your-api-key
-  ```
-  This backend is not included in the open-source release. All other features work without it.
+- **AutoCheck API** : Associated functions have been removed.
 
 ## Making Changes
 
