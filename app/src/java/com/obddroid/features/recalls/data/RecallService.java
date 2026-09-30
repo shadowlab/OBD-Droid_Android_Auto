@@ -5,9 +5,6 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.obddroid.features.recalls.model.RecallSearchResult;
-import com.obddroid.features.recalls.model.AutoCheckRecallResult;
-import com.obddroid.features.vehiclehistory.data.AutoCheckService;
-import com.obddroid.features.vehiclehistory.model.AutoCheckReport;
 
 import java.util.List;
 
@@ -30,7 +27,6 @@ public class RecallService {
 
     private final VINDecoder vinDecoder;
     private final RecallLookupAndroid recallLookup;
-    private final AutoCheckService autoCheckService;
 
     /**
      * Callback interface for recall search results
@@ -42,19 +38,9 @@ public class RecallService {
         void onSearchFailed(String error);
     }
 
-    /**
-     * Callback interface for AutoCheck open recall lookups.
-     */
-    public interface OpenRecallCallback {
-        void onLoading();
-        void onSuccess(AutoCheckRecallResult result);
-        void onError(String error);
-    }
-
     public RecallService(Context context) {
         this.vinDecoder = new VINDecoder(context);
         this.recallLookup = new RecallLookupAndroid(context);
-        this.autoCheckService = new AutoCheckService(context);
         Log.d(TAG, "RecallService initialized");
     }
 
@@ -115,45 +101,6 @@ public class RecallService {
                 Log.e(TAG, "VIN decode error: " + error);
                 callback.onSearchFailed(error != null ? error :
                     "Failed to decode VIN. Please check vehicle connection.");
-            }
-        });
-    }
-
-    /**
-     * Fetch open recalls from the AutoCheck API for a VIN.
-     * This supplements the NHTSA recall data with vehicle-specific campaigns.
-     */
-    public void fetchOpenRecalls(String vin, OpenRecallCallback callback) {
-        if (callback == null) {
-            return;
-        }
-
-        if (TextUtils.isEmpty(vin)) {
-            callback.onError("No VIN provided");
-            return;
-        }
-
-        if (vin.length() != 17) {
-            callback.onError("Invalid VIN (must be 17 characters)");
-            return;
-        }
-
-        callback.onLoading();
-
-        autoCheckService.fetchReport(vin, new AutoCheckService.AutoCheckCallback() {
-            @Override
-            public void onSuccess(AutoCheckReport report) {
-                AutoCheckRecallResult result = AutoCheckRecallResult.fromReport(report);
-                if (result == null) {
-                    callback.onError("AutoCheck did not return recall data");
-                } else {
-                    callback.onSuccess(result);
-                }
-            }
-
-            @Override
-            public void onError(String errorMessage) {
-                callback.onError(errorMessage != null ? errorMessage : "Failed to fetch open recalls");
             }
         });
     }

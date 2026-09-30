@@ -125,23 +125,6 @@ final class DashboardUiHelper {
             log.warning("Emissions card NOT found!");
         }
 
-        // Vehicle History card
-        View vehicleHistoryCard = activity.findViewById(R.id.card_vehicle_history);
-        if (vehicleHistoryCard != null) {
-            addCardPressAnimation(vehicleHistoryCard);
-            vehicleHistoryCard.setOnClickListener(v -> {
-                log.info("Vehicle History card clicked!");
-                activity.launchAutoCheckActivity();
-            });
-            vehicleHistoryCard.setOnLongClickListener(v -> showCardInfoDialog(
-                activity,
-                "Vehicle History",
-                "Get comprehensive vehicle history reports powered by AutoCheck. Check for accidents, ownership history, title status, recalls, and more."
-            ));
-        } else {
-            log.warning("Vehicle History card NOT found!");
-        }
-
         // Safety Recalls card
         View recallsCard = activity.findViewById(R.id.card_vehicle_recalls);
         if (recallsCard != null) {

@@ -62,7 +62,6 @@ import com.obddroid.ui.coordinators.CsvLoggingUiCoordinator;
 import com.obddroid.telemetry.GpsTelemetryManager;
 import com.obddroid.ui.coordinators.RemoteTelemetryUiCoordinator;
 import com.obddroid.telemetry.SensorTelemetryManager;
-import com.obddroid.features.vehiclehistory.ui.AutoCheckActivity;
 import com.obddroid.features.recalls.ui.RecallActivity;
 import com.obddroid.utils.DatabaseUpdateManager;
 
@@ -2836,15 +2835,6 @@ public class MainActivity extends AppCompatActivity
     void launchEmissionsActivity() {
         log.info("Launching Emissions Diagnostics activity");
         Intent intent = new Intent(this, EmissionsActivity.class);
-        startActivity(intent);
-    }
-
-    /**
-     * Launch the AutoCheck Vehicle History activity
-     */
-    void launchAutoCheckActivity() {
-        log.info("Launching Vehicle History (AutoCheck) activity");
-        Intent intent = new Intent(this, AutoCheckActivity.class);
         startActivity(intent);
     }
 

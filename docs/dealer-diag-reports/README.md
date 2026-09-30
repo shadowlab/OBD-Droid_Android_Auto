@@ -330,15 +330,15 @@ Secondary Air          | Yes/No    | ✓ / ✗    |
 ---
 
 ### Step 5: Vehicle Info (Mode 09)
-**App:** *Main Menu → Vehicle History → VIN Info*
+**App:** *Main Menu → VIN Decoder* (calibration data: *Main Menu → ECU Modules*)
 
 **What it does:**
 Retrieves VIN, calibration IDs, and vehicle identification from ECU.
 
 **How to use:**
-1. Tap "Vehicle History" from main menu
+1. Tap "VIN Decoder" from main menu
 2. VIN auto-decodes to Year/Make/Model/Engine
-3. Check "Calibration ID" and "CVN" fields
+3. Open "ECU Modules" and check the "Calibration ID" and "CVN" fields
 4. Screenshot for records
 
 **What to look for:**

@@ -11,7 +11,7 @@
 
 ### Store Listing Copy
 - [ ] **App Title** (≤30 characters): `OBD-Droid: Car Diagnostics`.
-- [ ] **Short Description** (≤80 characters): “Professional OBD2 scanner with safety recalls & vehicle history”.
+- [ ] **Short Description** (≤80 characters): “Professional OBD2 scanner with safety recalls & live engine data”.
 - [ ] **Full Description** (≤4000 characters) covering:
   - Core feature bullets.
   - Supported adapters and hardware requirements.
@@ -20,6 +20,6 @@
 
 ### ASO & Keyword Research
 - [ ] Audit top OBD apps for keyword gaps.
-- [ ] Identify 5–10 primary keywords (diagnostics, vehicle history, telemetry, etc.).
+- [ ] Identify 5–10 primary keywords (diagnostics, safety recalls, telemetry, etc.).
 - [ ] Integrate keywords into title, short description, and long description.
 - [ ] Localize copy for tier-one launch markets once finalized.

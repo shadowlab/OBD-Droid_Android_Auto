@@ -2,12 +2,12 @@
 
 **Full-stack Android diagnostics suite built for technicians, tuners, and enthusiasts.**
 
-OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicle workstation. From live telemetry to AutoCheck intelligence and an AI copilot, every module is engineered to make complex diagnostics feel effortless.
+OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicle workstation. From live telemetry to safety recalls and an AI copilot, every module is engineered to make complex diagnostics feel effortless.
 
 > **TL;DR**
 > - Plug in any ELM327 adapter, launch the Android app, and get live data in under a minute.
 > - One tap runs a full ECU scan, logs CSV/GPS telemetry, and syncs findings with your AI copilot.
-> - Safety recalls, AutoCheck history, VIN decode, and report exports are all presented in-app with the same cohesive UI.
+> - Safety recalls, VIN decode, and report exports are all presented in-app with the same cohesive UI.
 
 ---
 
@@ -15,7 +15,7 @@ OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicl
 
 - **Mission Control for Your Vehicle** – Real-time dashboards, custom PIDs, HUD mode, and CSV/GPS logging.
 - **Deep Diagnostics Pipeline** – ECU discovery, freeze frames, emissions readiness, and health scoring in one flow.
-- **VIN-Aware Intelligence** – AutoCheck history with ownership, odometer, and open recalls side-by-side with NHTSA data.
+- **VIN-Aware Intelligence** – VIN decode and NHTSA safety recalls for the connected vehicle.
 - **AI Copilot** – OpenAI ChatGPT delivers contextual answers using live vehicle data and prior conversations.
 - **Modular Architecture** – Service-driven Android app, standalone companion APIs, and reusable libraries.
 
@@ -39,12 +39,8 @@ OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicl
     <td>Rich DTC cards with freeze frames, remedy hints, and AI follow-ups.</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/vehicle-history.png" width="260" alt="Vehicle History" /></td>
-    <td>AutoCheck report viewer with ownership timeline, odometer verification, and export actions.</td>
-  </tr>
-  <tr>
     <td><img src="docs/screenshots/recalls-all.png" width="260" alt="Safety Recalls" /></td>
-    <td>Segmented toggle combining public NHTSA campaigns with VIN-specific AutoCheck open recalls.</td>
+    <td>NHTSA safety recall campaigns for the connected vehicle's VIN, with remedy details and CSV/JSON export.</td>
   </tr>
 </table>
 
@@ -57,7 +53,6 @@ OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicl
 - <img src="docs/screenshots/full-vehicle-scan.png" width="220" alt="Full Vehicle Scan" /> – ECU discovery progress and baseline snapshot library.
 - <img src="docs/screenshots/emissions.png" width="220" alt="Emissions Readiness" /> – I/M monitors with pass/fail flags for inspection prep.
 - <img src="docs/screenshots/vin-decoder.png" width="220" alt="VIN Decoder" /> – VIN decode powering downstream features.
-- <img src="docs/screenshots/vehicle-history-export.png" width="220" alt="Vehicle History Export" /> – Share-ready PDF/JSON export drawer.
 
 </details>
 
@@ -89,25 +84,13 @@ OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicl
     <td>Drill-down view showing summaries, remedies, and export options.</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/vehicle-history.png" width="220" alt="Vehicle History" /></td>
-    <td><img src="docs/screenshots/vehicle-history-2.png" width="220" alt="Vehicle History Timeline" /></td>
-    <td><img src="docs/screenshots/vehicle-history-3.png" width="220" alt="Vehicle History Details" /></td>
-    <td><img src="docs/screenshots/vehicle-history-export.png" width="220" alt="Vehicle History Export" /></td>
-  </tr>
-  <tr>
-    <td>AutoCheck overview with vehicle score, alerts, and at-a-glance stats.</td>
-    <td>Ownership timeline and odometer verification pulled from AutoCheck.</td>
-    <td>Detailed campaign list, title history, and AutoCheck report drill-down.</td>
-    <td>One-tap export drawer for PDF/JSON sharing of AutoCheck vehicle history.</td>
-  </tr>
-  <tr>
     <td><img src="docs/screenshots/vin-decoder.png" width="220" alt="VIN Decoder" /></td>
     <td><img src="docs/screenshots/dashboard-footer.png" width="220" alt="Vehicle Footer" /></td>
     <td></td>
     <td></td>
   </tr>
   <tr>
-    <td>VIN decode powering downstream features like recalls and AutoCheck.</td>
+    <td>VIN decode powering downstream features like recalls.</td>
     <td>Signature vehicle footer with quick stats, connection state, and VIN context.</td>
     <td></td>
     <td></td>
@@ -139,9 +122,7 @@ OBD‑Droid turns any ELM327-compatible adapter into a professional-grade vehicl
 
 ### Vehicle Intelligence
 - VIN decode via `VINDecoder` (NHTSA) with manufacturer/trim heuristics.
-- AutoCheck companion API delivers premium vehicle history, open recalls, ownership, and odometer insights.
-- PDF export pipeline for shop handoffs, customer reports, and archive records.
-- Hybrid recall center blending NHTSA campaigns with AutoCheck VIN-specific items.
+- Recall center listing NHTSA campaigns for the connected vehicle's VIN.
 
 ### Fault Code Workflow
 - Launch screen guides the user to initiate a fresh scan before clearing codes.<br/><img src="docs/screenshots/fault-codes-start-screen.png" width="220" alt="Fault Codes Start" />
@@ -159,15 +140,14 @@ Adapter ⇨ CommService ⇨ ObdProt ⇨ ObdDataService ─┬─► Live Data / 
                                                   │   (freeze frames, readiness)
                                                   ├─► ScanOrchestrator → Baseline Library
                                                   ├─► CsvLoggingService (GPS + sensors)
-                                                  └─► Feature Modules (CoPilot, Recalls, AutoCheck)
+                                                  └─► Feature Modules (CoPilot, Recalls)
 
-Vehicle Data Service ⇨ AutoCheckService ⇨ VehicleHistoryActivity / RecallActivity
-NHTSA API            ⇨ RecallLookupAndroid ⇨ RecallActivity (All Recalls tab)
+NHTSA API            ⇨ RecallLookupAndroid ⇨ RecallActivity
 Claude API           ⇨ CoPilotService ⇨ CoPilotActivity (contextual AI answers)
 ```
 
 - **Separation of Concerns** – OBD stack lives in its own package, while UI features orchestrate data via managers/services.
-- **Request Queues & Caching** – Vehicle data service caches VIN lookups; in-app caching enables instant revisit offline.
+- **Request Queues & Caching** – VIN lookups and recall results are cached in-app for instant revisits offline.
 - **Configurable Telemetry** – Logging and AI features respond to user settings stored in `SharedPreferences`.
 
 ---
@@ -176,12 +156,12 @@ Claude API           ⇨ CoPilotService ⇨ CoPilotActivity (contextual AI answe
 
 | Layer | Details |
 | --- | --- |
-| Language | Java 17 (Android), TypeScript/Node (AutoCheck companion) |
+| Language | Java 17 (Android) |
 | UI | AppCompat + Material Components, RecyclerView, custom cards, HUD mode |
 | Architecture | Service + manager pattern, feature-scoped packages, background workers |
-| Data | SharedPreferences caching, on-disk CSV, JSON interop for AutoCheck reports |
-| Integrations | NHTSA APIs, Experian AutoCheck (Playwright scrape), OpenAI ChatGPT |
-| Tooling | Gradle, Android Studio Giraffe+, Lint, unit tests, GitHub Actions (companion API) |
+| Data | SharedPreferences caching, on-disk CSV/JSON exports |
+| Integrations | NHTSA APIs, OpenAI ChatGPT |
+| Tooling | Gradle, Android Studio Giraffe+, Lint, unit tests |
 | Submodules | [DTC Database](https://github.com/Wal33D/dtc-database) · [NHTSA Recall Lookup](https://github.com/Wal33D/nhtsa-recall-lookup) · [Automotive Logo Library](https://github.com/Wal33D/automotive-logo-library) |
 
 ---
@@ -234,8 +214,6 @@ git submodule update --init --recursive
 adb shell am start -n com.obddroid/.ui.activities.MainActivity
 ```
 
-> **Note:** The Vehicle History feature requires a **private AutoCheck backend** that you host yourself. This is not included in the open-source release. If you have access to AutoCheck data through your own dealership or subscription, you can stand up your own backend and configure the endpoint in `local.properties`. All other features (live data, fault codes, emissions, recalls via NHTSA, AI copilot) work without it.
-
 ### Android Auto (Desktop Head Unit)
 
 Android Auto shows adapter status, live data, and the last-read fault codes from the connection made in the phone app (`com.obddroid.car`). Connect to the adapter on the phone first; the car screens don't open their own connection.
@@ -276,8 +254,7 @@ Without a physical adapter, run an ELM327 simulator on your computer (`pip insta
 
 | Integration | Purpose | Notes |
 | --- | --- | --- |
-| **Vehicle Data Service** | Premium vehicle history & open recall data | **Private — not included.** Requires your own AutoCheck backend. Configure endpoint and API key in `local.properties`. |
-| **NHTSA Recall API** | Campaign listings, remedy info, VIN decodes | Back bone for “All Recalls” tab and VIN decoder. |
+| **NHTSA Recall API** | Campaign listings, remedy info, VIN decodes | Backbone for the Safety Recalls screen and VIN decoder. |
 | **OpenAI ChatGPT** | Conversational diagnostics | Context-aware responses with client-side redaction. |
 | **VIN Decoder** | Make/model/trim heuristics | Normalizes manufacturer naming for recall lookups. |
 
@@ -287,10 +264,8 @@ Without a physical adapter, run an ELM327 simulator on your computer (`pip insta
 
 - [ ] Jetpack Compose migration for telemetry dashboards.
 - [ ] BLE adapter improvements and auto-reconnect heuristics.
-- [ ] Cloud sync for baseline scans and AutoCheck reports.
+- [ ] Cloud sync for baseline scans.
 - [ ] In-app marketplace for pro data packs (TSBs, repair procedures).
-- [x] Integrate AutoCheck open recalls alongside NHTSA campaigns.
-- [x] Material-compliant segmented toggle for recalls UI.
 
 ---
 

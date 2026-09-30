@@ -16,8 +16,6 @@ project(':automotive-logo-library-android').projectDir = new File(rootDir, 'modu
 include ':dtc-database-android'
 project(':dtc-database-android').projectDir = new File(rootDir, 'modules/dtc-database/android/dtc-database-android')
 
-// Vehicle History Module
-
 // NHTSA Recall Lookup (single module with both Java core and Android wrapper)
 include ':nhtsa-recall-lookup'
 project(':nhtsa-recall-lookup').projectDir = new File(rootDir, 'modules/nhtsa-recall-lookup')

@@ -524,12 +524,6 @@ public class EmissionsActivity extends AppCompatActivity implements PvChangeList
         dialog.setContentView(R.layout.dialog_save_report);
         dialog.setCancelable(true);
 
-        // Hide PDF option (only used by Vehicle History)
-        View pdfOption = dialog.findViewById(R.id.option_export_pdf);
-        if (pdfOption != null) {
-            pdfOption.setVisibility(View.GONE);
-        }
-
         // CSV option
         View csvOption = dialog.findViewById(R.id.option_export_csv);
         csvOption.setOnClickListener(v -> {

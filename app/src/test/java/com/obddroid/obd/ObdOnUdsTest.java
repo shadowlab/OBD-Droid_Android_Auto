@@ -1,6 +1,9 @@
 package com.obddroid.obd;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
 
 import org.junit.Test;
@@ -146,5 +149,67 @@ public class ObdOnUdsTest {
     public void rawResponseKeepsOtherLines() {
         assertEquals("44", ObdOnUds.rawResponseToClassic("54", "04"));
         assertEquals("NODATA", ObdOnUds.rawResponseToClassic("NODATA", "03"));
+    }
+
+    // --- freeze frames ---
+
+    /**
+     * Snapshot for P0301 (record 00): load 04=64, coolant 05=B4, RPM 0C=1AF8,
+     * speed 0D=38 and odometer A6=00012345 (PID without a known length).
+     */
+    private static final String SNAPSHOT = "5904" + "030100" + "08" + "00" + "05"
+            + "F40464" + "F405B4" + "F40C1AF8" + "F40D38" + "F4A600012345";
+
+    @Test
+    public void recognizesFreezeFrameRequests() {
+        assertTrue(ObdOnUds.isFreezeFrameRequest("020000"));
+        assertTrue(ObdOnUds.isFreezeFrameRequest("0204"));
+        assertFalse(ObdOnUds.isFreezeFrameRequest("0100"));
+        assertFalse(ObdOnUds.isFreezeFrameRequest("02"));
+        assertEquals("190403010000", ObdOnUds.snapshotRequest("030100", "00"));
+    }
+
+    @Test
+    public void parsesSnapshotIdentification() {
+        assertArrayEquals(new String[]{"030100", "00"},
+                ObdOnUds.parseSnapshotIdentification("5903" + "03010000"));
+        // record 00 preferred over earlier entries
+        assertArrayEquals(new String[]{"030100", "00"},
+                ObdOnUds.parseSnapshotIdentification("5903" + "04200001" + "03010000"));
+        assertArrayEquals(new String[]{"042000", "01"},
+                ObdOnUds.parseSnapshotIdentification("5903" + "04200001"));
+        assertNull(ObdOnUds.parseSnapshotIdentification("5903"));
+    }
+
+    @Test
+    public void parsesSnapshotRecord() {
+        ObdOnUds.Snapshot snapshot = ObdOnUds.parseSnapshot(SNAPSHOT);
+        assertEquals("030100", snapshot.dtc);
+        assertEquals("64", snapshot.pids.get(0x04));
+        assertEquals("B4", snapshot.pids.get(0x05));
+        assertEquals("1AF8", snapshot.pids.get(0x0C));
+        assertEquals("38", snapshot.pids.get(0x0D));
+        assertEquals("00012345", snapshot.pids.get(0xA6));
+        assertEquals(5, snapshot.pids.size());
+    }
+
+    @Test
+    public void answersFreezeFrameRequestsFromSnapshot() {
+        ObdOnUds.Snapshot snapshot = ObdOnUds.parseSnapshot(SNAPSHOT);
+        // PIDs 02, 04, 05, 0C, 0D, and 20 (higher PIDs follow)
+        assertEquals("42000058180001", ObdOnUds.freezeFrameResponse(snapshot, "020000"));
+        assertEquals("42200000000001", ObdOnUds.freezeFrameResponse(snapshot, "022000"));
+        assertEquals("42A00004000000", ObdOnUds.freezeFrameResponse(snapshot, "02A000"));
+        assertEquals("420C001AF8", ObdOnUds.freezeFrameResponse(snapshot, "020C00"));
+        assertEquals("420C001AF8", ObdOnUds.freezeFrameResponse(snapshot, "020C"));
+        assertEquals("4202000301", ObdOnUds.freezeFrameResponse(snapshot, "020200"));
+        assertNull(ObdOnUds.freezeFrameResponse(snapshot, "021100"));
+    }
+
+    @Test
+    public void snapshotWithoutRecordHasNoData() {
+        ObdOnUds.Snapshot snapshot = ObdOnUds.parseSnapshot("5904" + "030100" + "08");
+        assertTrue(snapshot.pids.isEmpty());
+        assertNull(ObdOnUds.freezeFrameResponse(snapshot, "020000"));
     }
 }

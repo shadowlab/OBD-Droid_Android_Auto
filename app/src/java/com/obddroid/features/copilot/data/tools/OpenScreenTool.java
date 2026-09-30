@@ -6,7 +6,6 @@ import android.content.Intent;
 import com.obddroid.features.copilot.ui.CoPilotActivity;
 import com.obddroid.features.emissions.ui.EmissionsActivity;
 import com.obddroid.features.fueleconomy.ui.FuelEconomyActivity;
-import com.obddroid.features.vehiclehistory.ui.AutoCheckActivity;
 import com.obddroid.ui.activities.FaultCodesActivity;
 import com.obddroid.ui.activities.LiveDataActivity;
 import com.obddroid.ui.activities.SettingsActivity;
@@ -30,7 +29,7 @@ public class OpenScreenTool implements AgentTool {
 
         if (screen.isEmpty()) {
             throw new Exception("Screen parameter is required. " +
-                "Available: emissions, fault_codes, fuel_economy, live_data, settings, vehicle_history, copilot");
+                "Available: emissions, fault_codes, fuel_economy, live_data, settings, copilot");
         }
 
         Intent intent;
@@ -57,17 +56,13 @@ public class OpenScreenTool implements AgentTool {
                 intent = new Intent(context, SettingsActivity.class);
                 screenName = "Settings";
                 break;
-            case "vehicle_history":
-                intent = new Intent(context, AutoCheckActivity.class);
-                screenName = "Vehicle History";
-                break;
             case "copilot":
                 intent = new Intent(context, CoPilotActivity.class);
                 screenName = "CoPilot";
                 break;
             default:
                 throw new Exception("Unknown screen: " + screen + ". " +
-                    "Available: emissions, fault_codes, fuel_economy, live_data, settings, vehicle_history, copilot");
+                    "Available: emissions, fault_codes, fuel_economy, live_data, settings, copilot");
         }
 
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

@@ -271,54 +271,6 @@
                         </LinearLayout>
                     </androidx.cardview.widget.CardView>
 
-                    <!-- Vehicle History Card -->
-                    <androidx.cardview.widget.CardView
-                        android:id="@+id/card_vehicle_history"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackgroundBorderless"
-                        android:layout_margin="@dimen/spacing_xs"
-                        app:cardBackgroundColor="@color/background_secondary"
-                        app:cardCornerRadius="@dimen/card_corner_radius"
-                        app:cardElevation="@dimen/elevation_content_card"
-                        app:cardUseCompatPadding="false"
-                        android:layout_columnWeight="1">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal"
-                            android:padding="@dimen/spacing_medium">
-
-                            <LinearLayout
-                                android:layout_width="48dp"
-                                android:layout_height="48dp"
-                                android:background="@drawable/circle_background_vehicle_history"
-                                android:gravity="center">
-
-                                <ImageView
-                                    android:layout_width="28dp"
-                                    android:layout_height="28dp"
-                                    android:src="@drawable/ic_dashboard_vehicle_history"
-                                    android:contentDescription="Vehicle History"/>
-                            </LinearLayout>
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:layout_marginStart="@dimen/spacing_medium"
-                                android:text="Vehicle History"
-                                android:textColor="@color/text_primary_dark"
-                                android:textSize="@dimen/text_body"
-                                android:textStyle="bold"/>
-
-                        </LinearLayout>
-                    </androidx.cardview.widget.CardView>
-
                     <!-- Vehicle Recalls Card -->
                     <androidx.cardview.widget.CardView
                         android:id="@+id/card_vehicle_recalls"
@@ -565,6 +517,7 @@
                     <!-- Track Mode Card -->
                     <androidx.cardview.widget.CardView
                         android:id="@+id/card_track_mode"
+                        android:layout_columnSpan="2"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:clickable="true"
